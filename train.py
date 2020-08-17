@@ -9,6 +9,7 @@ import test  # import test.py to get mAP after each epoch
 from models import *
 from utils.datasets import *
 from utils.utils import *
+import subprocess, tempfile
 
 mixed_precision = True
 try:  # Mixed precision training https://github.com/NVIDIA/apex
@@ -199,7 +200,7 @@ def train(hyp):
 
     # Dataloader
     batch_size = min(batch_size, len(dataset))
-    nw = min([os.cpu_count(), batch_size if batch_size > 1 else 0, 8])  # number of workers
+    nw = opt.nw # min([os.cpu_count(), batch_size if batch_size > 1 else 0, 8])  # number of workers
     dataloader = torch.utils.data.DataLoader(dataset,
                                              batch_size=batch_size,
                                              num_workers=nw,
@@ -321,16 +322,10 @@ def train(hyp):
         ema.update_attr(model)
         final_epoch = epoch + 1 == epochs
         if not opt.notest or final_epoch:  # Calculate mAP
-            is_coco = any([x in data for x in ['coco.data', 'coco2014.data', 'coco2017.data']]) and model.nc == 80
-            results, maps = test.test(cfg,
-                                      data,
-                                      batch_size=batch_size,
-                                      imgsz=imgsz_test,
-                                      model=ema.ema,
-                                      save_json=final_epoch and is_coco,
-                                      single_cls=opt.single_cls,
-                                      dataloader=testloader,
-                                      multi_label=ni > n_burn)
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmpckpt = {'model': ema.ema.module.state_dict() if hasattr(model, 'module') else ema.ema.state_dict()}
+                torch.save(tmpckpt, os.path.join(tmpdirname, 'ckpt.pt'))
+                results, maps = test.test(cfg=opt.cfg, weights=os.path.join(tmpdirname, 'ckpt.pt'), data=opt.data, imgsz=imgsz_test, save_json=False)
 
         # Write
         with open(results_file, 'a') as f:
@@ -407,6 +402,7 @@ if __name__ == '__main__':
     parser.add_argument('--weights', type=str, default='weights/yolov3-spp-ultralytics.pt', help='initial weights path')
     parser.add_argument('--name', default='', help='renames results.txt to results_name.txt if supplied')
     parser.add_argument('--device', default='', help='device id (i.e. 0 or 0,1 or cpu)')
+    parser.add_argument('--nw', type=int, default=8, help='number of dataloader workers')
     parser.add_argument('--adam', action='store_true', help='use adam optimizer')
     parser.add_argument('--single-cls', action='store_true', help='train as single-class dataset')
     parser.add_argument('--freeze-layers', action='store_true', help='Freeze non-output layers')  

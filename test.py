@@ -24,8 +24,14 @@ def test(cfg,
     # Initialize/load model and set device
     if model is None:
         is_training = False
-        device = torch_utils.select_device(opt.device, batch_size=batch_size)
-        verbose = opt.task == 'test'
+        if 'opt' not in globals():
+            # test.test called from train.py but w/o passing model argument
+            # drawback of this patch: due to is_training=False, valid loss not computed
+            device = torch.device('cuda:0')
+            verbose= False
+        else:
+            device = torch_utils.select_device(opt.device, batch_size=batch_size)
+            verbose = opt.task == 'test'
 
         # Remove previous
         for f in glob.glob('test_batch*.jpg'):
@@ -63,7 +69,7 @@ def test(cfg,
 
     # Dataloader
     if dataloader is None:
-        dataset = LoadImagesAndLabels(path, imgsz, batch_size, rect=True, single_cls=opt.single_cls, pad=0.5)
+        dataset = LoadImagesAndLabels(path, imgsz, batch_size, rect=True, single_cls=single_cls, pad=0.5)
         batch_size = min(batch_size, len(dataset))
         dataloader = DataLoader(dataset,
                                 batch_size=batch_size,
@@ -243,8 +249,9 @@ if __name__ == '__main__':
     parser.add_argument('--device', default='', help='device id (i.e. 0 or 0,1) or cpu')
     parser.add_argument('--single-cls', action='store_true', help='train as single-class dataset')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
+    parser.add_argument('--no-pycocotools', action='store_true', help='do not evaluate using pycocotools')
     opt = parser.parse_args()
-    opt.save_json = opt.save_json or any([x in opt.data for x in ['coco.data', 'coco2014.data', 'coco2017.data']])
+    opt.save_json = (not opt.no_pycocotools) and (opt.save_json or any([x in opt.data for x in ['coco.data', 'coco2014.data', 'coco2017.data']]))
     opt.cfg = check_file(opt.cfg)  # check file
     opt.data = check_file(opt.data)  # check file
     print(opt)
