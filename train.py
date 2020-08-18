@@ -208,17 +208,6 @@ def train(hyp):
                                              pin_memory=True,
                                              collate_fn=dataset.collate_fn)
 
-    # Testloader
-    testloader = torch.utils.data.DataLoader(LoadImagesAndLabels(test_path, imgsz_test, batch_size,
-                                                                 hyp=hyp,
-                                                                 rect=True,
-                                                                 cache_images=opt.cache_images,
-                                                                 single_cls=opt.single_cls),
-                                             batch_size=batch_size,
-                                             num_workers=nw,
-                                             pin_memory=True,
-                                             collate_fn=dataset.collate_fn)
-
     # Model parameters
     model.nc = nc  # attach number of classes to model
     model.hyp = hyp  # attach hyperparameters to model
@@ -376,8 +365,6 @@ def train(hyp):
                 strip_optimizer(f2) if ispt else None  # strip optimizer
                 os.system('gsutil cp %s gs://%s/weights' % (f2, opt.bucket)) if opt.bucket and ispt else None  # upload
 
-    if not opt.evolve:
-        plot_results()  # save as results.png
     print('%g epochs completed in %.3f hours.\n' % (epoch - start_epoch + 1, (time.time() - t0) / 3600))
     dist.destroy_process_group() if torch.cuda.device_count() > 1 else None
     torch.cuda.empty_cache()
