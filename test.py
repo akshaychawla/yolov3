@@ -229,10 +229,12 @@ def test(cfg,
                   'See https://github.com/cocodataset/cocoapi/issues/356')
 
     # Return results
+    num_samples = len(dataloader)
+    del model, dataloader, dataset
     maps = np.zeros(nc) + map
     for i, c in enumerate(ap_class):
         maps[c] = ap[i]
-    return (mp, mr, map, mf1, *(loss.cpu() / len(dataloader)).tolist()), maps
+    return (mp, mr, map, mf1, *(loss.cpu() / num_samples).tolist()), maps
 
 
 if __name__ == '__main__':
