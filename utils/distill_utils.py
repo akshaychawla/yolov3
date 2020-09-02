@@ -1,5 +1,6 @@
 import torch 
-from torch import nn 
+from torch import nn
+import torch.nn.functional as nnfunc
 
 class Distillation(object):
     
@@ -12,6 +13,10 @@ class Distillation(object):
     def __init__(self,method="mse"): 
         if method=="mse":
             self.loss_fn = self.mse
+        # elif method=="cfmse":
+        #    self.loss_fn = self.cfmse
+        # elif method=="cfmse2":
+        #     self.loss_fn = self.cfmse2
         else:
             raise NotImplementedError 
 
@@ -25,4 +30,5 @@ class Distillation(object):
         for branchS, branchT in zip(predS, predT):
             dLoss.append(torch.mean((branchS - branchT)**2))
         dLoss = sum(dLoss)
-        return dLoss     
+        dLoss_items = torch.tensor((0.0, 0.0, 0.0, dLoss.item())).to(dLoss.device)
+        return dLoss, dLoss_items.detach()

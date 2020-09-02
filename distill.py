@@ -254,7 +254,7 @@ def train(hyp):
             dataset.indices = random.choices(range(dataset.n), weights=image_weights, k=dataset.n)  # rand weighted idx
 
         mloss = torch.zeros(4).to(device)  # mean losses
-        mdloss= [] # mean distillation loss
+        mdloss= torch.zeros(4).to(device) # mean distillation loss
         print(('\n' + '%10s' * 8) % ('Epoch', 'gpu_mem', 'GIoU', 'obj', 'cls', 'total', 'targets', 'img_size'))
         pbar = tqdm(enumerate(dataloader), total=nb)  # progress bar
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
@@ -290,8 +290,8 @@ def train(hyp):
 
             # Loss
             loss, loss_items = compute_loss(pred, targets, model)
-            distill_loss     = distill_criterion.loss_fn(pred, teacher_pred)
-            mdloss.append(distill_loss.item())
+            distill_loss, distill_loss_items = distill_criterion.loss_fn(pred, teacher_pred)
+            mdloss += distill_loss_items
             del teacher_inf, teacher_pred
             if not torch.isfinite(loss):
                 print('WARNING: non-finite loss, ending training ', loss_items)
@@ -333,8 +333,8 @@ def train(hyp):
         scheduler.step()
 
         # Process epoch results
-        mdloss = sum(mdloss) / len(mdloss)
-        print("mean distill loss: {:.4f}".format(mdloss))
+        mdloss /= nb
+        print("distill losses: {:.6f} {:.6f} {:.6f} | {:.6f}".format(mdloss[0].item(), mdloss[1].item(), mdloss[2].item(), mdloss[3].item()))
         ema.update_attr(model)
         final_epoch = epoch + 1 == epochs
         if not opt.notest or final_epoch:  # Calculate mAP
@@ -356,6 +356,8 @@ def train(hyp):
                     'val/giou_loss', 'val/obj_loss', 'val/cls_loss']
             for x, tag in zip(list(mloss[:-1]) + list(results), tags):
                 tb_writer.add_scalar(tag, x, epoch)
+            tb_writer.add_scalar("distill_conf", mdloss[0].item(), epoch), tb_writer.add_scalar("distill_dims", mdloss[1].item(), epoch), tb_writer.add_scalar("distill_clss", mdloss[2].item(), epoch)
+            tb_writer.add_scalar("distill_total", mdloss[3].item(), epoch)
 
         # Update best mAP
         fi = fitness(np.array(results).reshape(1, -1))  # fitness_i = weighted combination of [P, R, mAP, F1]
