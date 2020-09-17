@@ -96,25 +96,26 @@ def train(hyp):
     teacher.eval()
 
     # Optimizer
-    pg0, pg1, pg2 = [], [], []  # optimizer parameter groups
-    for k, v in dict(model.named_parameters()).items():
-        if '.bias' in k:
-            pg2 += [v]  # biases
-        elif 'Conv2d.weight' in k:
-            pg1 += [v]  # apply weight_decay
-        else:
-            pg0 += [v]  # all else
+    # pg0, pg1, pg2 = [], [], []  # optimizer parameter groups
+    # for k, v in dict(model.named_parameters()).items():
+    #     if '.bias' in k:
+    #         pg2 += [v]  # biases
+    #     elif 'Conv2d.weight' in k:
+    #         pg1 += [v]  # apply weight_decay
+    #     else:
+    #         pg0 += [v]  # all else
 
-    if opt.adam:
-        # hyp['lr0'] *= 0.1  # reduce lr (i.e. SGD=5E-3, Adam=5E-4)
-        optimizer = optim.Adam(pg0, lr=hyp['lr0'])
-        # optimizer = AdaBound(pg0, lr=hyp['lr0'], final_lr=0.1)
-    else:
-        optimizer = optim.SGD(pg0, lr=hyp['lr0'], momentum=hyp['momentum'], nesterov=True)
-    optimizer.add_param_group({'params': pg1, 'weight_decay': hyp['weight_decay']})  # add pg1 with weight_decay
-    optimizer.add_param_group({'params': pg2})  # add pg2 (biases)
-    print('Optimizer groups: %g .bias, %g Conv2d.weight, %g other' % (len(pg2), len(pg1), len(pg0)))
-    del pg0, pg1, pg2
+    # if opt.adam:
+    #     # hyp['lr0'] *= 0.1  # reduce lr (i.e. SGD=5E-3, Adam=5E-4)
+    #     optimizer = optim.Adam(pg0, lr=hyp['lr0'])
+    #     # optimizer = AdaBound(pg0, lr=hyp['lr0'], final_lr=0.1)
+    # else:
+    #     optimizer = optim.SGD(pg0, lr=hyp['lr0'], momentum=hyp['momentum'], nesterov=True)
+    # optimizer.add_param_group({'params': pg1, 'weight_decay': hyp['weight_decay']})  # add pg1 with weight_decay
+    # optimizer.add_param_group({'params': pg2})  # add pg2 (biases)
+    # print('Optimizer groups: %g .bias, %g Conv2d.weight, %g other' % (len(pg2), len(pg1), len(pg0)))
+    # del pg0, pg1, pg2
+    optimizer = optim.AdamW(model.parameters(), lr=opt.adam_lr)
 
     start_epoch = 0
     best_fitness = 0.0
@@ -171,10 +172,11 @@ def train(hyp):
         teacher.eval()
 
     # Scheduler https://arxiv.org/pdf/1812.01187.pdf
-    lf = lambda x: (((1 + math.cos(x * math.pi / epochs)) / 2) ** 1.0) * 0.95 + 0.05  # cosine
-    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
-    scheduler.last_epoch = start_epoch - 1  # see link below
+    # lf = lambda x: (((1 + math.cos(x * math.pi / epochs)) / 2) ** 1.0) * 0.95 + 0.05  # cosine
+    # scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
+    # scheduler.last_epoch = start_epoch - 1  # see link below
     # https://discuss.pytorch.org/t/a-problem-occured-when-resuming-an-optimizer/28822
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
     # Plot lr schedule
     # y = []
@@ -263,16 +265,16 @@ def train(hyp):
             targets = targets.to(device)
 
             # Burn-in
-            if ni <= n_burn:
-                xi = [0, n_burn]  # x interp
-                model.gr = np.interp(ni, xi, [0.0, 1.0])  # giou loss ratio (obj_loss = 1.0 or giou)
-                accumulate = max(1, np.interp(ni, xi, [1, 64 / batch_size]).round())
-                for j, x in enumerate(optimizer.param_groups):
-                    # bias lr falls from 0.1 to lr0, all other lrs rise from 0.0 to lr0
-                    x['lr'] = np.interp(ni, xi, [0.1 if j == 2 else 0.0, x['initial_lr'] * lf(epoch)])
-                    x['weight_decay'] = np.interp(ni, xi, [0.0, hyp['weight_decay'] if j == 1 else 0.0])
-                    if 'momentum' in x:
-                        x['momentum'] = np.interp(ni, xi, [0.9, hyp['momentum']])
+            # if ni <= n_burn:
+            #     xi = [0, n_burn]  # x interp
+            #     model.gr = np.interp(ni, xi, [0.0, 1.0])  # giou loss ratio (obj_loss = 1.0 or giou)
+            #     accumulate = max(1, np.interp(ni, xi, [1, 64 / batch_size]).round())
+            #     for j, x in enumerate(optimizer.param_groups):
+            #         # bias lr falls from 0.1 to lr0, all other lrs rise from 0.0 to lr0
+            #         x['lr'] = np.interp(ni, xi, [0.1 if j == 2 else 0.0, x['initial_lr'] * lf(epoch)])
+            #         x['weight_decay'] = np.interp(ni, xi, [0.0, hyp['weight_decay'] if j == 1 else 0.0])
+            #         if 'momentum' in x:
+            #             x['momentum'] = np.interp(ni, xi, [0.9, hyp['momentum']])
 
             # Multi-Scale
             if opt.multi_scale:
@@ -290,7 +292,8 @@ def train(hyp):
 
             # Loss
             loss, loss_items = compute_loss(pred, targets, model)
-            distill_loss, distill_loss_items = distill_criterion.loss_fn(pred, teacher_pred)
+            # distill_loss, distill_loss_items = distill_criterion.loss_fn(pred, teacher_pred, model)
+            distill_loss, distill_loss_items = distill_criterion.loss_fn(pred, teacher_inf, imgs, model)
             mdloss += distill_loss_items
             del teacher_inf, teacher_pred
             if not torch.isfinite(loss):
@@ -334,7 +337,7 @@ def train(hyp):
 
         # Process epoch results
         mdloss /= nb
-        print("distill losses: {:.6f} {:.6f} {:.6f} | {:.6f}".format(mdloss[0].item(), mdloss[1].item(), mdloss[2].item(), mdloss[3].item()))
+        print("distill losses: lbox:{:.6f} lobj:{:.6f} lcls:{:.6f} | loss:{:.6f}".format(mdloss[0].item(), mdloss[1].item(), mdloss[2].item(), mdloss[3].item()))
         ema.update_attr(model)
         final_epoch = epoch + 1 == epochs
         if not opt.notest or final_epoch:  # Calculate mAP
@@ -356,8 +359,8 @@ def train(hyp):
                     'val/giou_loss', 'val/obj_loss', 'val/cls_loss']
             for x, tag in zip(list(mloss[:-1]) + list(results), tags):
                 tb_writer.add_scalar(tag, x, epoch)
-            tb_writer.add_scalar("distill_conf", mdloss[0].item(), epoch), tb_writer.add_scalar("distill_dims", mdloss[1].item(), epoch), tb_writer.add_scalar("distill_clss", mdloss[2].item(), epoch)
-            tb_writer.add_scalar("distill_total", mdloss[3].item(), epoch)
+            tb_writer.add_scalar("distill_lbox", mdloss[0].item(), epoch), tb_writer.add_scalar("distill_lobj", mdloss[1].item(), epoch), tb_writer.add_scalar("distill_lcls", mdloss[2].item(), epoch)
+            tb_writer.add_scalar("distill_loss", mdloss[3].item(), epoch)
 
         # Update best mAP
         fi = fitness(np.array(results).reshape(1, -1))  # fitness_i = weighted combination of [P, R, mAP, F1]
@@ -427,6 +430,7 @@ if __name__ == '__main__':
     parser.add_argument('--alpha-yolo', type=float, default=1.0, help='weight for yolo loss')
     parser.add_argument('--alpha-distill', type=float, default=1.0, help='weight for distillation loss')
     parser.add_argument('--distill-method', type=str, default='mse', help='method for distillation (default: mse)')
+    parser.add_argument('--adam-lr', type=float, default=0.001, help='initial LR for adamw optimizer')
     opt = parser.parse_args()
     opt.weights = last if opt.resume and not opt.weights else opt.weights
     opt.cfg = check_file(opt.cfg)  # check file
