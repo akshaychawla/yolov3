@@ -56,5 +56,4 @@ diode-onebox w/ fp sampling  /path/to/diode_yolo/hallucinate/hallucinate_320_nor
 diode-onebox w/ tiles  /path/to/diode_yolo/onebox_tiles_coco/tiles.tgz  --data NGC_tiles.data
 ```
 
-Modify `./run.sh` to choose which proxy dataset for knowledge distillation.  
 
