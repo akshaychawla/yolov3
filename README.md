@@ -35,13 +35,31 @@ or use provided Dockerfile to create an image.
    ```
    python distill.py --data NGC_hallucinate.data --weights '' --batch-size 64 --cfg yolov3-spp.cfg --device='0,1,2,3' --nw=20 --cfg-teacher yolov3-spp.cfg --weights-teacher './weights/yolov3-spp-ultralytics.pt' --alpha-yolo=0.0 --alpha-distill=1.0 --distill-method='mse'
    ```
+4. Evaluate:
+   ```
+   python test.py --cfg yolov3-spp.cfg --weights='weights/best.pt' --img 640 --data='data/NGC_coco2014.data' --device='0'
+   ```
 
-Distillation and training logs are available at `diode_yolo/logs/` 
+Distillation and training logs are available at `diode_yolo/logs/yolov3_spp/`. e.g for onebox dataset distillation:
+```
+$ ls -1 /path/to/diode_yolo/logs/yolov3_spp/distill.onebox
 
-Available proxy dataset and their corresponding locations and `--data` flag for `distill.py` :
+best.pt (best checkpoint)
+bestresults (evaluation results from best checkpoint)
+info.txt (distillation command, evaluation command, time taken etc)
+last.pt (last checkpoint)
+lastresults (evaluation results from last checkpoint)
+results.txt (eval results of every epoch)
+runs (tensorboard logs)
+test_batch0_gt.jpg
+test_batch0_pred.jpg
+train_batch0.jpg
 
 ```
 
+Knowledge distillation can be performed with different proxy datasets. The available proxy dataset and their corresponding locations and `--data` flag for `distill.py` are:
+
+```
 # Real/Rendered proxy datasets
 coco  /path/to/diode_yolo/coco/coco.tgz  --data NGC_coco2014.data
 GTA5  /path/to/diode_yolo/gta5/gta5.tgz  --data NGC_gta5.data
